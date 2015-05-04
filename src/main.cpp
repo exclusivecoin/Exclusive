@@ -41,8 +41,18 @@ CBigNum bnProofOfStakeLimit(~uint256(0) >> 20);
 CBigNum bnProofOfWorkLimitTestNet(~uint256(0) >> 16);
 
 unsigned int nTargetSpacing = 1 * 40; // 40 seconds
+
+/* stake parameters pre-fork */
 unsigned int nStakeMinAge = 8 * 60 * 60; // 8 hours
-unsigned int nStakeMaxAge = 30 * 24 * 60 * 60;           // 30 days
+unsigned int nStakeMaxAge = 30 * 24 * 60 * 60; // 30 days
+
+/* stake parameters post-fork */
+unsigned int hfnStakeMinAge = 24 * 60 * 60; // 24 hours
+unsigned int hfnStakeMaxAge = 24 * 60 * 60 * 180; // 180 days
+
+/* This is used where parameters are compared based on the hard fork */
+unsigned int activeStakeMin;
+
 unsigned int nModifierInterval = 10 * 60; // time to elapse before new modifier is computed
 
 int nCoinbaseMaturity = 30;
@@ -968,22 +978,17 @@ int64_t GetProofOfWorkReward(int64_t nFees)
 {
     int64_t nSubsidy = 8 * COIN;
     
-    if (pindexBest->nHeight+1 == 1)
-    {
+    if (pindexBest->nHeight+1 == 1) {
       nSubsidy = 30000000 * COIN;
       return nSubsidy + nFees;
-    }
-    
-    
-    else if (pindexBest->nHeight+1 <= 8000)
-    {
+    } else if (pindexBest->nHeight+1 <= 8000) {
       nSubsidy = 0 * COIN;
       return nSubsidy + nFees;
-    }
-    
-    else
-    {
+    } else if (pindexBest->nHeight+1 < HFBLOCK) {
       nSubsidy = 8 * COIN;
+      return nSubsidy + nFees;
+    } else {
+      nSubsidy = 4 * COIN;
       return nSubsidy + nFees;
     }
 	
@@ -999,7 +1004,11 @@ int64_t GetProofOfStakeReward(int64_t nCoinAge, int64_t nFees)
 {
     int64_t nRewardCoinYear;
 
-    nRewardCoinYear = MAX_MINT_PROOF_OF_STAKE;
+    if (pindexBest->nHeight+1 < HFBLOCK) {
+       nRewardCoinYear = MAX_MINT_PROOF_OF_STAKE;
+    } else {
+       nRewardCoinYear = HFMAX_MINT_PROOF_OF_STAKE;
+    }
 
     int64_t nSubsidy = nCoinAge * nRewardCoinYear / 365 / COIN;
 
@@ -1864,6 +1873,8 @@ bool CBlock::SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew)
         if (nUpgraded > 100/2)
             // strMiscWarning is read by GetWarnings(), called by Qt and the JSON-RPC code to warn the user:
             strMiscWarning = _("Warning: This version is obsolete, upgrade required!");
+
+
     }
 
     std::string strCmd = GetArg("-blocknotify", "");
@@ -1889,11 +1900,14 @@ bool CTransaction::GetCoinAge(CTxDB& txdb, uint64_t& nCoinAge) const
     CBigNum bnCentSecond = 0;  // coin age in the unit of cent-seconds
     nCoinAge = 0;
 
+
     if (IsCoinBase())
         return true;
 
     BOOST_FOREACH(const CTxIn& txin, vin)
     {
+
+	// HERE
         // First try finding the previous transaction in database
         CTransaction txPrev;
         CTxIndex txindex;
@@ -1906,7 +1920,14 @@ bool CTransaction::GetCoinAge(CTxDB& txdb, uint64_t& nCoinAge) const
         CBlock block;
         if (!block.ReadFromDisk(txindex.pos.nFile, txindex.pos.nBlockPos, false))
             return false; // unable to read block of previous transaction
-        if (block.GetBlockTime() + nStakeMinAge > nTime)
+
+	if (nBestHeight < HFBLOCK) {
+	  activeStakeMin = nStakeMinAge;
+	} else {
+	  activeStakeMin = hfnStakeMinAge;
+	}
+
+        if (block.GetBlockTime() + activeStakeMin > nTime)
             continue; // only count coins meeting min age requirement
 
         int64_t nValueIn = txPrev.vout[txin.prevout.n].nValue;
@@ -2841,7 +2862,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         CAddress addrFrom;
         uint64_t nNonce = 1;
         vRecv >> pfrom->nVersion >> pfrom->nServices >> nTime >> addrMe;
-        if (pfrom->nVersion < MIN_PROTO_VERSION)
+
+	
+        if (pfrom->nVersion < MIN_PROTO_VERSION || pfrom->nVersion <= NOBLKS_VERSION_END)
         {
             // Since February 20, 2012, the protocol is initiated at version 209,
             // and earlier versions are no longer supported
@@ -3177,8 +3200,17 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 printf("  getblocks stopping at %d %s\n", pindex->nHeight, pindex->GetBlockHash().ToString().substr(0,20).c_str());
                 // ppcoin: tell downloading node about the latest block if it's
                 // without risk being rejected due to stake connection check
-                if (hashStop != hashBestChain && pindex->GetBlockTime() + nStakeMinAge > pindexBest->GetBlockTime())
-                    pfrom->PushInventory(CInv(MSG_BLOCK, hashBestChain));
+
+		if (pindex->nHeight < HFBLOCK) {
+		  activeStakeMin = nStakeMinAge;
+		} else {
+		  activeStakeMin = hfnStakeMinAge;
+		}
+
+                if (hashStop != hashBestChain && pindex->GetBlockTime() + activeStakeMin > pindexBest->GetBlockTime()) {
+                  pfrom->PushInventory(CInv(MSG_BLOCK, hashBestChain));
+		}
+
                 break;
             }
             pfrom->PushInventory(CInv(MSG_BLOCK, pindex->GetBlockHash()));

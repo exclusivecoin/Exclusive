@@ -14,7 +14,10 @@
 #include <boost/algorithm/string/replace.hpp>
 
 using namespace std;
+extern unsigned int nStakeMinAge;
 extern unsigned int nStakeMaxAge;
+extern unsigned int hfnStakeMinAge;
+extern unsigned int hfnStakeMaxAge;
 
 unsigned int nStakeSplitAge = 1 * 24 * 60 * 60;
 int64_t nStakeCombineThreshold = 1000 * COIN;
@@ -1533,14 +1536,21 @@ bool CWallet::GetStakeWeight(const CKeyStore& keystore, uint64_t& nMinWeight, ui
             nWeight += bnCoinDayWeight.getuint64();
         }
 
+	unsigned int activeStakeMax;
+	if (nBestHeight < HFBLOCK) {
+	  activeStakeMax = nStakeMaxAge;
+	} else { 
+	  activeStakeMax = hfnStakeMaxAge;
+	}
+
         // Weight is greater than zero, but the maximum value isn't reached yet
-        if (nTimeWeight > 0 && nTimeWeight < nStakeMaxAge)
+        if (nTimeWeight > 0 && nTimeWeight < activeStakeMax)
         {
             nMinWeight += bnCoinDayWeight.getuint64();
         }
 
         // Maximum weight was reached
-        if (nTimeWeight == nStakeMaxAge)
+        if (nTimeWeight == activeStakeMax)
         {
             nMaxWeight += bnCoinDayWeight.getuint64();
         }
@@ -1602,7 +1612,13 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         }
 
         static int nMaxStakeSearchInterval = 60;
-        if (block.GetBlockTime() + nStakeMinAge > txNew.nTime - nMaxStakeSearchInterval)
+	unsigned int activeStakeMin;
+	if (nBestHeight < HFBLOCK) {
+	  activeStakeMin = nStakeMinAge;
+	} else { 
+	  activeStakeMin = hfnStakeMinAge;
+	}
+        if (block.GetBlockTime() + activeStakeMin > txNew.nTime - nMaxStakeSearchInterval)
             continue; // only count coins meeting min age requirement
 
         bool fKernelFound = false;
@@ -1688,6 +1704,8 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
     if (nCredit == 0 || nCredit > nBalance - nReserveBalance)
         return false;
 
+    
+
     BOOST_FOREACH(PAIRTYPE(const CWalletTx*, unsigned int) pcoin, setCoins)
     {
         // Attempt to add more inputs
@@ -1710,7 +1728,14 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             if (pcoin.first->vout[pcoin.second].nValue >= nStakeCombineThreshold)
                 continue;
             // Do not add input that is still too young
-            if (nTimeWeight < nStakeMinAge)
+
+	    unsigned int activeStakeMin;
+	    if (nBestHeight < HFBLOCK) {
+	      activeStakeMin = nStakeMinAge;
+	    } else { 
+	      activeStakeMin = hfnStakeMinAge;
+	    }
+            if (nTimeWeight < activeStakeMin)
                 continue;
 
             txNew.vin.push_back(CTxIn(pcoin.first->GetHash(), pcoin.second));

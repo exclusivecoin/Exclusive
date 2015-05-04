@@ -1138,14 +1138,12 @@ void MapPort()
 // Each pair gives a source name and a seed name.
 // The first name is used as information source for addrman.
 // The second name should resolve to a list of seed addresses.
+
+// You never, ever want to just add people as nodes to have nodes.  You want full control over them.
+// DNS will dictate which nodes are returned when queried as trustworthy seed nodes.
+
 static const char *strDNSSeed[][2] = {
-    	{"88.198.255.220", "88.198.255.220"},
-    	{"199.116.117.126", "199.116.117.126"},
-    	{"168.62.178.174", "168.62.178.174"},
-    	{"node.minerpools.com", "node.minerpools.com"},
-    	{"194.79.23.168", "194.79.23.168"},
-    	{"193.109.128.158", "193.109.128.158"},
-    	{"198.55.116.102", "198.55.116.102"},
+    	{"seed.exclusivecoin.pw", "seed.exclusivecoin.pw"}
 };
 
 void ThreadDNSAddressSeed(void* parg)

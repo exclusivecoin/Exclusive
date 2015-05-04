@@ -11,6 +11,11 @@
 #include "main.h"
 #include "uint256.h"
 
+extern unsigned int nStakeMinAge;
+extern unsigned int nStakeMaxAge;
+extern unsigned int hfnStakeMinAge;
+extern unsigned int hfnStakeMaxAge;
+
 namespace Checkpoints
 {
     typedef std::map<int, uint256> MapCheckpoints;
@@ -337,12 +342,19 @@ namespace Checkpoints
     // Is the sync-checkpoint outside maturity window?
     bool IsMatureSyncCheckpoint()
     {
+        unsigned int activeStakeMin;
+	if (nBestHeight < HFBLOCK) {
+    	  activeStakeMin = nStakeMinAge;
+	} else {
+    	  activeStakeMin = hfnStakeMinAge;
+	}
+
         LOCK(cs_hashSyncCheckpoint);
         // sync-checkpoint should always be accepted block
         assert(mapBlockIndex.count(hashSyncCheckpoint));
         const CBlockIndex* pindexSync = mapBlockIndex[hashSyncCheckpoint];
         return (nBestHeight >= pindexSync->nHeight + nCoinbaseMaturity ||
-                pindexSync->GetBlockTime() + nStakeMinAge < GetAdjustedTime());
+                pindexSync->GetBlockTime() + activeStakeMin < GetAdjustedTime());
     }
 }
 
